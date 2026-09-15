@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="logopoli2.jpeg" type="image/jpeg">
+    <title>Traductor de Lenguaje de Señas</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #19223D 0%, #174974 100%); 
+            min-height: 100vh; 
+            padding: 20px; 
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        
+        .titulo-flex {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            gap: 18px;
+            margin-bottom: 10px;
+        }
+        .titulo-flex h1 { color: white; width: 100%; text-align: center; font-size: 2.5em; margin: 0; }
+        .titulo-img { margin-left: auto; width: 150px; height: auto; display: block; }
+        .subtitle { color: rgba(255,255,255,0.85); text-align:center; margin-bottom:30px; }
+        
+        /* Selectores de modo */
+        .mode-selector { display:flex; gap:15px; justify-content:center; margin-bottom:30px; }
+        .mode-btn { padding: 12px 22px; border:none; border-radius:10px; font-size:1.05em; font-weight:600; cursor:pointer; background: rgba(255,255,255,0.12); color:white; transition: all 0.2s; }
+        .mode-btn.active { background: #0856d4; transform:translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        
+        /* Layout Grid */
+        .main-grid { display:grid; grid-template-columns: 1.2fr 1fr; gap:20px; }
+        .panel { background: rgba(255,255,255,0.08); backdrop-filter: blur(8px); border-radius:12px; padding:20px; box-shadow: 0 6px 24px rgba(0,0,0,0.12); }
+        
+        /* Contenedores de Video y Canvas */
+        .video-container { position:relative; background:black; border-radius:10px; overflow:hidden; margin-bottom:12px; }
+        .video-wrapper { position:relative; width:100%; padding-bottom:56.25%; }
+        video, canvas { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
+        
+        /* Overlays e Indicadores */
+        .placeholder { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color: rgba(255,255,255,0.85); text-align:center; padding:20px; z-index: 5; }
+        .status-badge { position:absolute; top:12px; right:12px; background: rgba(0,0,0,0.6); color:white; padding:8px 12px; border-radius:20px; font-weight:700; z-index:12; display:none; }
+        .recording-indicator { position:absolute; top:12px; left:12px; background: rgba(255,0,0,0.9); color:white; padding:8px 12px; border-radius:20px; display:none; align-items:center; gap:8px; z-index:12; }
+        .rec-dot { width:10px; height:10px; border-radius:50%; background:white; animation: blink 1s infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        
+        .recognition-overlay { position:absolute; bottom:12px; left:12px; right:12px; background: rgba(0,0,0,0.75); color:white; padding:12px; border-radius:10px; z-index:11; display:none; }
+        .confidence-bar { width:100%; height:10px; background: rgba(255,255,255,0.12); border-radius:6px; overflow:hidden; margin-top:8px; }
+        .confidence-fill { height:100%; background: #0856d4; transition: width 0.25s; }
+        
+        /* UI de Control */
+        .btn { width:100%; padding:12px; border:none; border-radius:8px; font-size:1em; font-weight:700; cursor:pointer; margin-bottom:12px; transition: opacity 0.2s; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background:#2196F3; color:white; }
+        .btn-danger { background:#f44336; color:white; }
+        .btn-success { background:#3eb74a; color:white; }
+        
+        input[type=text] { width:100%; padding:10px; border-radius:8px; border:2px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color:white; margin-bottom:10px; }
+        .info-box { background: rgba(0,0,0,0.28); color: rgba(255,255,255,0.9); padding:12px; border-radius:8px; margin-bottom:12px; font-size: 0.95em; line-height: 1.4; }
+        
+        /* Lista de Señas */
+        .signs-list { margin-top:15px; }
+        .sign-item { display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.06); padding:10px; border-radius:8px; margin-bottom:8px; }
+        .delete-btn { background: rgba(255,0,0,0.6); color:white; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; }
+        .empty-state { color: rgba(255,255,255,0.6); text-align:center; padding:10px; }
+        
+        h2, h3 { color: white; margin-bottom: 10px; font-weight: 600; }
+        .train-inline { width: 100%; }
+        /* Supabase (solo estado, sin claves en la UI) */
+        .sb-status { font-size: 0.9em; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; text-align: center; font-weight: 600; }
+        .sb-ok { background: rgba(62,183,74,0.25); color: #b9f5c0; border: 1px solid rgba(62,183,74,0.5); }
+        .sb-local { background: rgba(255,152,0,0.2); color: #ffe0b2; border: 1px solid rgba(255,152,0,0.5); }
+
+        /* Vista ampliada al encender la cámara */
+        body.camera-on .container { max-width: 1600px; }
+        body.camera-on .main-grid { grid-template-columns: 1.7fr 1fr; }
+        body.camera-on .video-wrapper { padding-bottom: 72%; }
+        body.camera-on #recognizedSign { font-size: 1.8em; }
+        body.camera-on .recognition-overlay { padding: 16px; }
+        body.camera-on .subtitle, body.camera-on #panel1 .info-box { display: none; }
+
+        /* Responsive Mobile Layout (< 768px) */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .titulo-flex { flex-direction: column; gap: 10px; }
+            .titulo-flex h1 { font-size: 1.8em; }
+            .titulo-img { margin: 0 auto; width: 100px; }
+            .main-grid { grid-template-columns: 1fr; gap: 15px; }
+            .video-wrapper { padding-bottom: 130%; }
+            .info-box { display: none !important; }
+            
+            .train-inline { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+            .train-inline h2.tit2 { font-size: 16px !important; white-space: nowrap; margin: 0; }
+            .train-inline input#signName { flex: 1; margin: 0; }
+            
+            .status-badge, .recording-indicator, .recognition-overlay { transform: scale(0.9); }
+            body.camera-on .video-wrapper { padding-bottom: 135%; }
+            body.camera-on #recognizedSign { font-size: 1.5em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="titulo-flex">
+            <h1>🤟 Traductor de Lenguaje de Señas</h1>
+            <img src="logopoli2.jpeg" class="titulo-img" alt="Logo">
+        </div>
+        <p class="subtitle">Detección de 2 manos con análisis de movimiento dinámico (DTW)</p>
+
+        <div class="mode-selector">
+            <button class="mode-btn active" id="trainBtn" onclick="setMode('train')">💾 Entrenar</button>
+            <button class="mode-btn" id="recognizeBtn" onclick="setMode('recognize')">👁️ Reconocer</button>
+        </div>
+
+        <div class="main-grid">
+            <div class="panel" id="panel1">
+                <div class="video-container">
+                    <div class="video-wrapper">
+                        <div class="placeholder" id="placeholder">
+                            <h2>📹</h2>
+                            <p>Presiona "Iniciar Cámara" para comenzar</p>
+                        </div>
+                        <video id="video" autoplay playsinline style="display:none"></video>
+                        <canvas id="canvas"></canvas>
+                        <canvas id="trailCanvas" style="pointer-events:none;"></canvas>
+
+                        <div class="recording-indicator" id="recordingIndicator">
+                            <div class="rec-dot"></div><span id="recordingText">Grabando...</span>
+                        </div>
+                        <div class="status-badge" id="statusBadge">
+                            <span id="statusText"></span>
+                        </div>
+                        <div id="recognitionOverlay" class="recognition-overlay">
+                            <h2 id="recognizedSign">-</h2>
+                            <p style="margin:4px 0;">Confianza: <span id="confidence">0</span>%</p>
+                            <div class="confidence-bar"><div class="confidence-fill" id="confidenceFill" style="width:0%"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="cameraBtn" onclick="toggleCamera()">📷 Iniciar Cámara</button>
+
+                <div class="info-box">
+                    <strong>✨ Características:</strong><br>
+                    • Detecta hasta 2 manos simultáneamente<br>
+                    • Modelo DTW (Dynamic Time Warping) integrado<br>
+                    • Auto-reinicio inmediato al fallar lectura o retirar manos<br>
+                    • Filtro de coincidencia estricto (>90% de precisión)
+                </div>
+            </div>
+
+            <div class="panel">
+                <div id="trainPanel">
+                    <div class="train-inline">
+                        <h2 class="tit2">Entrenar Nueva Seña</h2>
+                        <input type="text" id="signName" placeholder="Nombre de la seña (ej: Hola, Gracias)"> 
+                    </div>
+                    <button class="btn btn-success" id="recordBtn" onclick="recordSign()" disabled>⏺️ Grabar Seña (3 segundos)</button>
+                </div>
+
+                <div id="recognizePanel" style="display:none;">
+                    <h2>Reconocimiento Activo</h2>
+                    <div class="info-box"> 
+                        <strong>👀 El sistema está analizando:</strong><br>
+                        • Posición y trayectorias relativas a la muñeca<br>
+                        • Auto-reinicio automático ante gestos desconocidos
+                    </div>
+                </div>
+
+                <hr style="border: 0; height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0;">
+
+                <h2>Datos de Entrenamiento</h2>
+                <div id="sbStatus" class="sb-status sb-local">⏳ Conectando...</div>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px; margin-top: 5px;">
+                    <button class="btn btn-primary" style="margin:0;" onclick="exportSigns()">📤 Exportar DB (.JSON)</button>
+                    <button class="btn btn-primary" style="margin:0; position: relative; overflow: hidden;">
+                        📥 Importar a DB (.JSON)
+                        <input type="file" id="importFile" accept="application/json,.json" onchange="importSigns(this.files[0]); this.value='';" style="position: absolute; left: 0; top: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer;">
+                    </button>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button class="btn btn-success" style="margin:0;" onclick="reloadFromCloud()">🔄 Recargar desde nube</button>
+                </div>
+
+                <div class="signs-list">
+                    <h3 style="display:flex; justify-content:space-between; align-items:center;">
+                        Señas Guardadas (<span id="signCount">0</span>) 
+                        <button class="delete-btn" id="clearAllBtn" style="display:none;" onclick="clearAllSigns()">🗑️ Borrar Todo</button>
+                    </h3>
+                    <div id="signsList" class="empty-state">Sin señas entrenadas. ¡Comienza grabando una!</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Variables Globales ---
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const canvasCtx = canvas.getContext('2d');
+        const trailCanvas = document.getElementById('trailCanvas');
+        const trailCtx = trailCanvas.getContext('2d');
+        const recordBtn = document.getElementById('recordBtn');
+
+        const HAND_CONNECTIONS = [
+            [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+            [5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],
+            [13,17],[17,18],[18,19],[19,20],[0,17]
+        ];
+
+        let hands = null;
+        let cameraInstance = null;
+        let cameraStream = null;
+        let trainedSigns = {};
+        let currentMode = 'train';
+        let isRecording = false;
+        let recordingData = [];
+        let motionHistory = [];
+        
+        let liveBuffer = [];
+        const LIVE_BUFFER_MAX = 30; 
+        const THRESHOLD_DTW = 0.93; // Umbral estricto del 90%
+
+        // --- Configuración Supabase ---
+        // Proyecto: cpdcczkgwquseffhpirw (us-east-1)
+        const SUPABASE_URL_DEFAULT = "https://cpdcczkgwquseffhpirw.supabase.co";
+        const SUPABASE_ANON_KEY_DEFAULT = "sb_publishable_R-AEkZ1hewFHI2b-ReEC_g_6ZgHNc_x";
+        const SUPABASE_TABLE = "signs";
+
+        let sb = null;
+        let sbConnected = false;
+
+        function getSupabaseConfig() {
+            const url = (SUPABASE_URL_DEFAULT || '').trim();
+            const key = (SUPABASE_ANON_KEY_DEFAULT || '').trim();
+            if (!url || !key) return null;
+            return { url, key };
+        }
+
+        function initSupabase() {
+            const cfg = getSupabaseConfig();
+            if (!cfg) { setSbStatus(false, '⚠️ Modo local'); return; }
+            try {
+                sb = window.supabase.createClient(cfg.url, cfg.key);
+                testSupabaseConnection();
+            } catch (e) {
+                console.error('Error init Supabase:', e);
+                setSbStatus(false, '❌ Error al inicializar db, usando modo local');
+            }
+        }
+
+        async function testSupabaseConnection() {
+            try {
+                const { error } = await sb.from(SUPABASE_TABLE).select('id', { count: 'exact', head: true });
+                if (error) throw error;
+                setSbStatus(true, '☁️ conectado: datos en la nube');
+            } catch (e) {
+                console.error('Supabase no disponible:', e.message);
+                setSbStatus(false, '⚠️ Sin conexión a Supabase (' + e.message + ') — modo local');
+                sbConnected = false;
+            }
+        }
+
+        function setSbStatus(ok, msg) {
+            sbConnected = ok;
+            const el = document.getElementById('sbStatus');
+            el.textContent = msg;
+            el.className = 'sb-status ' + (ok ? 'sb-ok' : 'sb-local');
+        }
+
+        // --- Manejo de Datos (Supabase + fallback LocalStorage) ---
+        async function loadSigns() {
+            // 1) Intentar desde Supabase
+            if (sb) {
+                try {
+                    const { data, error } = await sb.from(SUPABASE_TABLE).select('*').order('name');
+                    if (error) throw error;
+                    trainedSigns = {};
+                    (data || []).forEach(row => {
+                        trainedSigns[row.name] = {
+                            vectors: row.vectors || [],
+                            timestamp: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+                            frames: row.frames || 0,
+                            id: row.id
+                        };
+                    });
+                    sbConnected = true;
+                    setSbStatus(true, `☁️ conectado: ${data.length} seña(s) en la nube`);
+                    // cache local
+                    try { localStorage.setItem('trainedSigns', JSON.stringify(trainedSigns)); } catch(e){}
+                    updateSignsList();
+                    return;
+                } catch (e) {
+                    console.error('loadSigns db falló, fallback local:', e.message);
+                    sbConnected = false;
+                    setSbStatus(false, '⚠️ db no disponible — modo local (' + e.message + ')');
+                }
+            }
+            // 2) Fallback localStorage
+            try {
+                const saved = localStorage.getItem('trainedSigns');
+                trainedSigns = saved ? JSON.parse(saved) : {};
+            } catch(e) {
+                console.error("Error al cargar localStorage:", e);
+                trainedSigns = {};
+            }
+            updateSignsList();
+        }
+
+        function saveLocalCache() {
+            try {
+                localStorage.setItem('trainedSigns', JSON.stringify(trainedSigns));
+            } catch(e){ console.error("Error al guardar en localStorage:", e); }
+        }
+
+        // Guarda/actualiza UNA seña en Supabase (upsert por name). Siempre actualiza caché local.
+        async function persistSign(name) {
+            saveLocalCache();
+            updateSignsList();
+            if (!sb) return;
+            try {
+                const entry = trainedSigns[name];
+                if (!entry) return;
+                const payload = { name, vectors: entry.vectors, frames: entry.frames || 0, updated_at: new Date().toISOString() };
+                const { error } = await sb.from(SUPABASE_TABLE).upsert(payload, { onConflict: 'name' });
+                if (error) throw error;
+                if (!sbConnected) { sbConnected = true; setSbStatus(true, '☁️ conectado: datos en la nube'); }
+            } catch (e) {
+                console.error('persistSign falló:', e.message);
+                sbConnected = false;
+                setSbStatus(false, '⚠️ Cambios solo en local (' + e.message + ')');
+            }
+        }
+
+        async function deleteSignRemote(name) {
+            saveLocalCache();
+            updateSignsList();
+            if (!sb) return;
+            try {
+                const { error } = await sb.from(SUPABASE_TABLE).delete().eq('name', name);
+                if (error) throw error;
+            } catch (e) {
+                console.error('delete remoto falló:', e.message);
+            }
+        }
+
+        // --- Control de Interfaz ---
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('trainBtn').classList.toggle('active', mode === 'train');
+            document.getElementById('recognizeBtn').classList.toggle('active', mode === 'recognize');
+            document.getElementById('trainPanel').style.display = mode === 'train' ? 'block' : 'none';
+            document.getElementById('recognizePanel').style.display = mode === 'recognize' ? 'block' : 'none';
+            if (mode === 'train') document.getElementById('recognitionOverlay').style.display = 'none';
+        }
+
+        // --- MediaPipe Hands ---
+        function initializeMediaPipe() {
+            if (hands) return;
+            hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+            hands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.60,
+                minTrackingConfidence: 0.55
+            });
+            hands.onResults(onResults);
+        }
+
+        // --- Procesamiento de Video ---
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            if (results.image) {
+                canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+            }
+
+            let handsDetected = 0;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                results.multiHandLandmarks.forEach((landmarks, index) => {
+                    handsDetected++;
+                    let handedness = results.multiHandedness?.[index]?.label || 'Right';
+                    const color = handedness === 'Left' ? '#00FF00' : '#00FFFF';
+                    const dotColor = handedness === 'Left' ? '#FF0000' : '#0000FF';
+
+                    try {
+                        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: color, lineWidth:4});
+                        drawLandmarks(canvasCtx, landmarks, {color: dotColor, lineWidth:2, radius:3});
+                    } catch(e) {}
+
+                    updateMotionHistory(landmarks, index);
+                });
+                drawMotionTrail();
+            } else {
+                trailCtx.clearRect(0,0,trailCanvas.width,trailCanvas.height);
+                motionHistory = [];
+                liveBuffer = []; // Limpieza inmediata del buffer al retirar las manos
+            }
+
+            canvasCtx.restore();
+            updateStatus(handsDetected);
+
+            if (isRecording) {
+                recordingData.push({
+                    landmarks: results.multiHandLandmarks ? JSON.parse(JSON.stringify(results.multiHandLandmarks)) : [],
+                    handedness: results.multiHandedness || []
+                });
+            }
+
+            if (currentMode === 'recognize' && !isRecording) {
+                recognizeSign(results);
+            }
+        }
+
+        function frameToVector(frame) {
+            const HAND_LEN = 21;
+            const perHand = [];
+            let left = null, right = null;
+
+            if (frame.handedness && frame.landmarks && frame.handedness.length === frame.landmarks.length) {
+                for (let i = 0; i < frame.handedness.length; i++) {
+                    const label = frame.handedness[i].label || '';
+                    if (label.toLowerCase().includes('left')) left = frame.landmarks[i];
+                    else right = frame.landmarks[i];
+                }
+            }
+            if (!left && frame.landmarks?.[0]) left = frame.landmarks[0];
+            if (!right && frame.landmarks?.[1]) right = frame.landmarks[1];
+
+            [left, right].forEach(hand => {
+                if (!hand) {
+                    for (let i = 0; i < HAND_LEN * 2; i++) perHand.push(0);
+                } else {
+                    const wrist = hand[0];
+                    for (let i = 0; i < HAND_LEN; i++) {
+                        perHand.push(hand[i].x - wrist.x);
+                        perHand.push(hand[i].y - wrist.y);
+                    }
+                }
+            });
+            return perHand;
+        }
+
+        function dtwDistance(seqA, seqB) {
+            const n = seqA.length; const m = seqB.length;
+            if (n === 0 || m === 0) return Infinity;
+
+            const INF = 1e12;
+            const dtw = Array.from({length: n+1}, () => new Float64Array(m+1).fill(INF));
+            dtw[0][0] = 0;
+
+            for (let i=1; i<=n; i++){
+                for (let j=1; j<=m; j++){
+                    let sum = 0;
+                    for (let k=0; k<seqA[i-1].length; k++){
+                        const d = (seqA[i-1][k] || 0) - (seqB[j-1][k] || 0);
+                        sum += d*d;
+                    }
+                    const cost = Math.sqrt(sum);
+                    dtw[i][j] = cost + Math.min(dtw[i-1][j], dtw[i][j-1], dtw[i-1][j-1]);
+                }
+            }
+            return dtw[n][m];
+        }
+
+        function dtwSimilarity(seqA, seqB) {
+            const dist = dtwDistance(seqA, seqB);
+            const avgLen = (seqA.length + seqB.length) / 2 || 1;
+            const dim = seqA[0] ? seqA[0].length : 84;
+            const norm = dist / (avgLen * Math.sqrt(dim));
+            return Math.max(0, 1 - norm);
+        }
+
+        // --- Algoritmo de Reconocimiento y Auto-reinicio ---
+        function recognizeSign(results) {
+            // Evitamos procesar si la cámara no reporta landmarks válidos
+            if (!results?.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+                document.getElementById('recognitionOverlay').style.display = 'none';
+                return;
+            }
+
+            const frame = { 
+                landmarks: results.multiHandLandmarks, 
+                handedness: results.multiHandedness || [] 
+            };
+            
+            liveBuffer.push(frameToVector(frame));
+            if (liveBuffer.length > LIVE_BUFFER_MAX) liveBuffer.shift();
+
+            // Esperar que el buffer tenga al menos un historial mínimo para comparar movimientos dinámicos
+            if (liveBuffer.length < 8) {
+                document.getElementById('recognitionOverlay').style.display = 'none';
+                return;
+            }
+
+            let bestName = null; let bestScore = 0;
+            for (const name in trainedSigns) {
+                const entry = trainedSigns[name];
+                if (!entry || !entry.vectors) continue;
+                for (const storedSeq of entry.vectors) {
+                    const score = dtwSimilarity(liveBuffer, storedSeq);
+                    if (score > bestScore) { bestScore = score; bestName = name; }
+                }
+            }
+
+            // MODIFICACIÓN CRÍTICA:
+            if (bestName && bestScore >= THRESHOLD_DTW) {
+                // Coincidencia exitosa superior o igual al 90%
+                const overlay = document.getElementById('recognitionOverlay');
+                document.getElementById('recognizedSign').textContent = bestName;
+                const confPercent = Math.round(bestScore * 100);
+                document.getElementById('confidence').textContent = confPercent;
+                document.getElementById('confidenceFill').style.width = Math.min(100, confPercent) + '%';
+                overlay.style.display = 'block';
+            } else {
+                // Si hay manos en pantalla pero el gesto NO es reconocido con confianza >= 90%,
+                // ocultamos el overlay y REINICIAMOS la lectura (limpiamos el buffer).
+                document.getElementById('recognitionOverlay').style.display = 'none';
+                liveBuffer = []; 
+            }
+        }
+
+        // --- Grabadora de Señas Dinámicas ---
+        function recordSign() {
+            const name = document.getElementById('signName').value.trim();
+            if (!name) { alert('⚠️ Ingresa un nombre para la seña'); return; }
+            if (!video.srcObject) { alert('📷 Inicia la cámara primero'); return; }
+
+            isRecording = true; 
+            recordingData = []; 
+            recordBtn.disabled = true; 
+            document.getElementById('recordingIndicator').style.display = 'flex';
+
+            setTimeout(async () => {
+                isRecording = false; 
+                document.getElementById('recordingIndicator').style.display = 'none'; 
+                recordBtn.disabled = false;
+
+                if (recordingData.length > 6) {
+                    const vectors = recordingData.map(f => frameToVector({landmarks: f.landmarks, handedness: f.handedness}));
+                    
+                    trainedSigns[name] = trainedSigns[name] || { vectors: [], timestamp: Date.now(), frames: 0 };
+                    trainedSigns[name].vectors.push(vectors);
+                    trainedSigns[name].timestamp = Date.now();
+                    trainedSigns[name].frames = (trainedSigns[name].frames || 0) + recordingData.length;
+                    
+                    await persistSign(name);
+                    alert(`✅ Seña "${name}" guardada en ${sb ? 'Supabase ☁️' : 'local'} (${recordingData.length} frames)`);
+                } else {
+                    alert('❌ No se capturaron suficientes frames. Intenta de nuevo.');
+                }
+            }, 3000);
+        }
+
+        // --- Herramientas de Renderizado de Movimiento ---
+        function updateMotionHistory(landmarks, handIndex) {
+            const indexTip = landmarks[8];
+            const centerX = indexTip.x * canvas.width;
+            const centerY = indexTip.y * canvas.height;
+            if (!motionHistory[handIndex]) motionHistory[handIndex] = [];
+            motionHistory[handIndex].push({x:centerX, y:centerY});
+            if (motionHistory[handIndex].length > 40) motionHistory[handIndex].shift();
+        }
+
+        function drawMotionTrail() {
+            trailCtx.clearRect(0,0,trailCanvas.width, trailCanvas.height);
+            motionHistory.forEach((trail, handIndex) => {
+                if (!trail || trail.length < 2) return;
+                const color = handIndex === 0 ? '255, 255, 0' : '255, 0, 255';
+                for (let i=1; i<trail.length; i++){
+                    const alpha = i/trail.length;
+                    trailCtx.strokeStyle = `rgba(${color}, ${alpha * 0.9})`;
+                    trailCtx.lineWidth = 5;
+                    trailCtx.lineCap = 'round';
+                    trailCtx.beginPath();
+                    trailCtx.moveTo(trail[i-1].x, trail[i-1].y);
+                    trailCtx.lineTo(trail[i].x, trail[i].y);
+                    trailCtx.stroke();
+                }
+            });
+        }
+
+        function updateStatus(handsDetected) {
+            const statusText = document.getElementById('statusText');
+            const statusBadge = document.getElementById('statusBadge');
+            
+            if (handsDetected === 0) {
+                statusBadge.style.display = 'none'; 
+            } else if (handsDetected === 1) {
+                statusBadge.style.display = 'block';
+                statusText.textContent = '✋ 1 Mano';
+                statusBadge.style.background = 'rgba(255,152,0,0.85)';
+            } else {
+                statusBadge.style.display = 'block';
+                statusText.textContent = '👐 2 Manos';
+                statusBadge.style.background = 'rgba(76,175,80,0.85)';
+            }
+        }
+
+        // --- Control de Cámara ---
+        async function toggleCamera() {
+            const btn = document.getElementById('cameraBtn');
+            const placeholder = document.getElementById('placeholder');
+
+            if (video.srcObject) {
+                if (cameraInstance) { try { cameraInstance.stop(); } catch(e){} cameraInstance = null; }
+                if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
+                video.srcObject = null;
+                video.style.display = 'none';
+                placeholder.style.display = 'block';
+                recordBtn.disabled = true;
+                btn.textContent = '📷 Iniciar Cámara';
+                document.getElementById('statusBadge').style.display = 'none';
+                document.body.classList.remove('camera-on');
+                location.reload();
+                return;
+            }
+
+            try {
+                initializeMediaPipe();
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' } });
+                video.srcObject = cameraStream;
+                await video.play();
+
+                // Ampliar vista de cámara para ver mejor grabación y reconocimiento
+                document.body.classList.add('camera-on');
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                const wrap = document.querySelector('.video-wrapper');
+                const w = (wrap && wrap.clientWidth) || video.clientWidth || 1280;
+                const h = Math.round(w * (window.innerWidth <= 768 ? 1.35 : 0.72));
+                canvas.width = w; canvas.height = h; trailCanvas.width = w; trailCanvas.height = h;
+                
+                video.style.display = 'block'; 
+                placeholder.style.display = 'none';
+                recordBtn.disabled = false;
+                btn.textContent = '⏹️ Detener Cámara';
+                document.getElementById('panel1').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                cameraInstance = new Camera(video, {
+                    onFrame: async () => { await hands.send({image: video}); },
+                    width: 1280, height: 720
+                });
+                cameraInstance.start();
+            } catch(err) {
+                document.body.classList.remove('camera-on');
+                placeholder.innerHTML = `<div style="background: rgba(255,0,0,0.25); padding:12px; border-radius:8px; color:#ffdddd;"><h3>⚠️ Error de cámara</h3><p>${err.message}</p></div>`;
+                console.error(err);
+            }
+        }
+
+        // --- Importación / Exportación con Supabase ---
+        function downloadJson(obj, filename) {
+            const data = JSON.stringify(obj, null, 2);
+            const blob = new Blob([data], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        // Exporta SIEMPRE desde la DB (si hay conexión), si no desde caché local
+        async function exportSigns() {
+            try {
+                let payload = trainedSigns;
+                let origen = 'local';
+                if (sb) {
+                    const { data, error } = await sb.from(SUPABASE_TABLE).select('*').order('name');
+                    if (error) throw error;
+                    payload = {};
+                    (data || []).forEach(row => {
+                        payload[row.name] = {
+                            vectors: row.vectors || [],
+                            frames: row.frames || 0,
+                            timestamp: row.updated_at ? new Date(row.updated_at).getTime() : Date.now()
+                        };
+                    });
+                    trainedSigns = payload;
+                    saveLocalCache();
+                    updateSignsList();
+                    origen = 'Supabase ☁️';
+                }
+                const n = Object.keys(payload || {}).length;
+                if (n === 0) { alert('⚠️ No hay señas para exportar.'); return; }
+                const d = new Date();
+                const stamp = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + '_' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0');
+                downloadJson(payload, `entrenamiento_lessa_${stamp}.json`);
+                alert(`✅ ${n} seña(s) exportadas desde ${origen}.`);
+            } catch (err) {
+                console.error('export falló:', err);
+                alert('❌ Error al exportar desde Supabase: ' + err.message + '\nSe exporta caché local.');
+                downloadJson(trainedSigns, 'entrenamiento_lessa_local.json');
+            }
+        }
+
+        // Exportar una sola seña (botón por fila)
+        async function exportSingleSign(name) {
+            const entry = trainedSigns[name];
+            if (!entry) { alert('⚠️ Seña no encontrada en memoria.'); return; }
+            downloadJson({ [name]: entry }, `sena_${name}.json`);
+        }
+
+        function normalizeImportedData(data) {
+            // Acepta: { "Hola": {vectors, frames} }  ó  [ {name, vectors, frames} ]  ó  { signs: [...] }
+            if (data && data.signs && Array.isArray(data.signs)) return normalizeImportedData(data.signs);
+            if (Array.isArray(data)) {
+                const out = {};
+                data.forEach(r => { if (r && r.name) out[r.name] = { vectors: r.vectors || [], frames: r.frames || 0, timestamp: r.updated_at ? new Date(r.updated_at).getTime() : Date.now() }; });
+                return out;
+            }
+            if (data && typeof data === 'object') return data;
+            throw new Error('Formato JSON no reconocido');
+        }
+
+        // Convierte 1 frame legacy {hands:[{landmarks:[{x,y}...]}]} a vector de 84 floats
+        function legacyFrameToVector(frame) {
+            if (!frame) return null;
+            const hands = frame.hands || frame.landmarks || null;
+            if (!hands) return null;
+            // frameToVector() espera {landmarks:[mano1, mano2], handedness:[]}
+            const landmarks = Array.isArray(hands)
+                ? hands.map(h => (h && h.landmarks) ? h.landmarks : h)
+                : [];
+            if (!landmarks.length) return null;
+            try {
+                return frameToVector({ landmarks, handedness: [] });
+            } catch (e) { return null; }
+        }
+
+        // Convierte entrada legacy {data:[frames...]} a {vectors:[muestra], frames}
+        // data = frames de UNA grabación -> una sola muestra para DTW
+        function convertLegacyEntry(e) {
+            if (!e || typeof e !== 'object') return null;
+            if (Array.isArray(e.vectors) && e.vectors.length) return { vectors: e.vectors, frames: e.frames || 0 };
+            const raw = e.data || e.samples || e.frames_data || null;
+            if (!Array.isArray(raw) || !raw.length) return null;
+            // Caso A: array de frames con .hands (formato entrenamiento_lessa.json)
+            if (raw[0] && (raw[0].hands || raw[0].landmarks)) {
+                const sample = [];
+                for (const f of raw) {
+                    const v = legacyFrameToVector(f);
+                    if (v) sample.push(v);
+                }
+                if (sample.length < 6) return null;
+                return { vectors: [sample], frames: e.frames || sample.length };
+            }
+            // Caso B: ya es array de muestras [[...],[...]]
+            if (Array.isArray(raw[0])) return { vectors: raw, frames: e.frames || raw.length };
+            return null;
+        }
+
+        // Importa un .JSON hacia la DB (upsert por name, en lotes)
+        async function importSigns(file) {
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const raw = JSON.parse(text);
+                const data = normalizeImportedData(raw);
+                const names = Object.keys(data);
+                if (names.length === 0) { alert('⚠️ El archivo no contiene señas.'); return; }
+                // Validación + conversión (acepta formato actual {vectors} y legacy {data:[{hands}]})
+                let validas = 0;
+                const omitidas = [];
+                const importadas = [];
+                for (const key of names) {
+                    const conv = convertLegacyEntry(data[key]);
+                    if (!conv) { omitidas.push(key); console.warn('Seña omitida (sin vectors ni data convertible):', key); continue; }
+                    trainedSigns[key] = { vectors: conv.vectors, frames: conv.frames || 0, timestamp: (data[key] && data[key].timestamp) || Date.now() };
+                    validas++;
+                    importadas.push(key);
+                }
+                if (validas === 0) {
+                    alert('❌ Ninguna seña válida en el archivo.\nClaves encontradas: ' + names.slice(0,10).join(', ') + '\nRevisado: se esperaba "vectors" o "data[].hands". Abre la consola (F12) para detalles.');
+                    return;
+                }
+                saveLocalCache();
+                updateSignsList();
+                // Subir solo las importadas a Supabase en lotes de 50
+                if (sb) {
+                    const rows = importadas.map((name) => ({
+                        name,
+                        vectors: trainedSigns[name].vectors || [],
+                        frames: trainedSigns[name].frames || 0,
+                        updated_at: new Date().toISOString()
+                    }));
+                    const BATCH = 50;
+                    for (let i = 0; i < rows.length; i += BATCH) {
+                        const chunk = rows.slice(i, i + BATCH);
+                        const { error } = await sb.from(SUPABASE_TABLE).upsert(chunk, { onConflict: 'name' });
+                        if (error) throw error;
+                    }
+                    sbConnected = true;
+                    setSbStatus(true, `☁️ conectado: ${rows.length} seña(s) en la nube`);
+                    await loadSigns(); // recargar para quedar en sync con la DB
+                }
+                alert(`✅ ${validas} seña(s) importadas a ${sb ? 'Supabase ☁️' : 'local'}.`);
+            } catch (err) {
+                console.error(err);
+                alert("❌ Error al importar: " + err.message);
+            }
+        }
+
+        async function reloadFromCloud() {
+            if (!sb) { alert('⚠️ Configura Supabase primero.'); return; }
+            await loadSigns();
+            alert(`✅ Sincronizado: ${Object.keys(trainedSigns).length} seña(s) desde Supabase.`);
+        }
+
+        function updateSignsList(){
+            const container = document.getElementById('signsList');
+            container.innerHTML = '';
+            const keys = Object.keys(trainedSigns || {});
+            document.getElementById('signCount').textContent = keys.length;
+            document.getElementById('clearAllBtn').style.display = keys.length > 0 ? 'inline-block' : 'none';
+            
+            if (keys.length === 0) { 
+                container.className = 'empty-state'; 
+                container.textContent = 'Sin señas entrenadas. ¡Comienza grabando una!'; 
+                return; 
+            }
+            
+            keys.forEach(name => {
+                const entry = trainedSigns[name];
+                const div = document.createElement('div'); div.className = 'sign-item';
+                div.innerHTML = `
+                    <div>
+                        <div style="font-weight:700;color:white">${name}</div>
+                        <div style="font-size:0.85em;color:rgba(255,255,255,0.8)">${entry.frames || 0} frames • ${new Date(entry.timestamp).toLocaleString()}</div>
+                    </div>
+                `;
+                const del = document.createElement('button'); del.className='delete-btn'; del.textContent='Eliminar'; 
+                del.onclick = async ()=>{ if (confirm(`¿Borrar seña "${name}"?`)){ delete trainedSigns[name]; await deleteSignRemote(name); } };
+                const exp = document.createElement('button'); exp.className='delete-btn'; exp.style.background='rgba(33,150,243,0.7)'; exp.style.marginRight='6px'; exp.textContent='📤';
+                exp.title = `Exportar "${name}" a .JSON`;
+                exp.onclick = ()=> exportSingleSign(name);
+                const wrap = document.createElement('div');
+                wrap.appendChild(exp); wrap.appendChild(del);
+                div.appendChild(wrap); 
+                container.appendChild(div);
+            });
+        }
+
+        async function clearAllSigns(){ 
+            if (!confirm('¿Borrar todas las señas entrenadas?')) return;
+            trainedSigns = {};
+            saveLocalCache();
+            updateSignsList();
+            if (sb) {
+                try {
+                    const { error } = await sb.from(SUPABASE_TABLE).delete().neq('name', '');
+                    if (error) throw error;
+                } catch (e) { console.error('clearAll remoto falló:', e.message); }
+            }
+        }
+
+        window.addEventListener('resize', ()=>{
+            const w = video.clientWidth || 640; const h = video.clientHeight || 480;
+            canvas.width = w; canvas.height = h; trailCanvas.width = w; trailCanvas.height = h;
+        });
+
+        initSupabase();
+        loadSigns();
+        setMode('train');
+    </script>
+</body>
+</html>
