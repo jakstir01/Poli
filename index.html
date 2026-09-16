@@ -2,25 +2,25 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
     <link rel="icon" href="logopoli2.jpeg" type="image/jpeg">
     <title>Traductor de Lenguaje de Señas</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: linear-gradient(135deg, #19223D 0%, #174974 100%); 
-            min-height: 100vh; 
-            padding: 20px; 
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #19223D 0%, #174974 100%);
+            min-height: 100vh;
+            padding: 20px;
         }
         .container { max-width: 1400px; margin: 0 auto; }
-        
+
         .titulo-flex {
             display: flex;
             align-items: center;
@@ -32,62 +32,256 @@
         .titulo-flex h1 { color: white; width: 100%; text-align: center; font-size: 2.5em; margin: 0; }
         .titulo-img { margin-left: auto; width: 150px; height: auto; display: block; }
         .subtitle { color: rgba(255,255,255,0.85); text-align:center; margin-bottom:30px; }
-        
+
         /* Selectores de modo */
         .mode-selector { display:flex; gap:15px; justify-content:center; margin-bottom:30px; }
         .mode-btn { padding: 12px 22px; border:none; border-radius:10px; font-size:1.05em; font-weight:600; cursor:pointer; background: rgba(255,255,255,0.12); color:white; transition: all 0.2s; }
         .mode-btn.active { background: #0856d4; transform:translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-        
+
         /* Layout Grid */
         .main-grid { display:grid; grid-template-columns: 1.2fr 1fr; gap:20px; }
         .panel { background: rgba(255,255,255,0.08); backdrop-filter: blur(8px); border-radius:12px; padding:20px; box-shadow: 0 6px 24px rgba(0,0,0,0.12); }
-        
+
         /* Contenedores de Video y Canvas */
         .video-container { position:relative; background:black; border-radius:10px; overflow:hidden; margin-bottom:12px; }
         .video-wrapper { position:relative; width:100%; padding-bottom:56.25%; }
         video, canvas { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
-        
+
+        /* Video espejado solo cuando se usa cámara frontal */
+        video.mirror, canvas.mirror { transform: scaleX(-1); }
+
         /* Overlays e Indicadores */
         .placeholder { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color: rgba(255,255,255,0.85); text-align:center; padding:20px; z-index: 5; }
         .status-badge { position:absolute; top:12px; right:12px; background: rgba(0,0,0,0.6); color:white; padding:8px 12px; border-radius:20px; font-weight:700; z-index:12; display:none; }
         .recording-indicator { position:absolute; top:12px; left:12px; background: rgba(255,0,0,0.9); color:white; padding:8px 12px; border-radius:20px; display:none; align-items:center; gap:8px; z-index:12; }
         .rec-dot { width:10px; height:10px; border-radius:50%; background:white; animation: blink 1s infinite; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-        
+
         .recognition-overlay { position:absolute; bottom:12px; left:12px; right:12px; background: rgba(0,0,0,0.75); color:white; padding:12px; border-radius:10px; z-index:11; display:none; }
         .confidence-bar { width:100%; height:10px; background: rgba(255,255,255,0.12); border-radius:6px; overflow:hidden; margin-top:8px; }
         .confidence-fill { height:100%; background: #0856d4; transition: width 0.25s; }
-        
+
         /* UI de Control */
         .btn { width:100%; padding:12px; border:none; border-radius:8px; font-size:1em; font-weight:700; cursor:pointer; margin-bottom:12px; transition: opacity 0.2s; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-primary { background:#2196F3; color:white; }
+        .btn-secondary { background: rgba(255,255,255,0.18); color:white; }
         .btn-danger { background:#f44336; color:white; }
         .btn-success { background:#3eb74a; color:white; }
-        
+
+        .camera-controls { display:flex; gap:10px; }
+        .camera-controls .btn { flex:1; }
+
         input[type=text] { width:100%; padding:10px; border-radius:8px; border:2px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color:white; margin-bottom:10px; }
         .info-box { background: rgba(0,0,0,0.28); color: rgba(255,255,255,0.9); padding:12px; border-radius:8px; margin-bottom:12px; font-size: 0.95em; line-height: 1.4; }
-        
+
         /* Lista de Señas */
         .signs-list { margin-top:15px; }
         .sign-item { display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.06); padding:10px; border-radius:8px; margin-bottom:8px; }
         .delete-btn { background: rgba(255,0,0,0.6); color:white; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; }
         .empty-state { color: rgba(255,255,255,0.6); text-align:center; padding:10px; }
-        
+
         h2, h3 { color: white; margin-bottom: 10px; font-weight: 600; }
         .train-inline { width: 100%; }
-        /* Supabase (solo estado, sin claves en la UI) */
+
+        /* Sección colapsable "Datos de Entrenamiento" (se oculta al encender la cámara para no tapar la vista) */
+        .data-toggle {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255,255,255,0.06);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        #dataSection {
+            overflow: hidden;
+            max-height: 2000px;
+            opacity: 1;
+            transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
+        }
+        #dataSection.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin: 0;
+            pointer-events: none;
+        }
+        /* Con la cámara activa, MediaPipe ocupa el hilo principal en cada cuadro: una transición
+           de max-height (que recalcula layout en cada frame) queda "colgada" y tarda segundos en
+           verse. La quitamos en ese caso para que el panel se achique al instante. */
+        body.camera-on #dataSection {
+            transition: none;
+        }
+        /* Estado de conexión a la base de datos (solo estado, sin claves en la UI) */
         .sb-status { font-size: 0.9em; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; text-align: center; font-weight: 600; }
         .sb-ok { background: rgba(62,183,74,0.25); color: #b9f5c0; border: 1px solid rgba(62,183,74,0.5); }
         .sb-local { background: rgba(255,152,0,0.2); color: #ffe0b2; border: 1px solid rgba(255,152,0,0.5); }
 
-        /* Vista ampliada al encender la cámara */
+        /* Pantalla de carga inicial: le da tiempo al modelo de reconocimiento (MediaPipe Hands)
+           de descargarse/inicializarse antes de dejar usar la app. */
+        .app-loading-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: linear-gradient(135deg, #19223D 0%, #174974 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 24px;
+            text-align: center;
+            transition: opacity 0.4s ease;
+        }
+        .app-loading-screen.hidden { opacity: 0; pointer-events: none; }
+        .app-loading-logo { width: 110px; height: auto; border-radius: 12px; }
+        .app-loading-screen h2 { color: white; font-size: 1.25em; margin: 0; font-weight: 600; }
+        .app-loading-bar {
+            width: min(280px, 80vw);
+            height: 8px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.15);
+            overflow: hidden;
+        }
+        .app-loading-bar-fill {
+            width: 35%;
+            height: 100%;
+            border-radius: 6px;
+            background: #0856d4;
+            animation: appLoadingSlide 1.2s ease-in-out infinite;
+        }
+        @keyframes appLoadingSlide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(385%); }
+        }
+        .app-loading-screen p { color: rgba(255,255,255,0.8); font-size: 0.9em; margin: 0; max-width: 320px; }
+        .app-loading-skip {
+            margin-top: 6px;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        /* Modo cámara: comportamiento por defecto (escritorio) = "vista ampliada" clásica,
+           la cámara crece dentro del layout normal en vez de ocupar toda la pantalla. */
+        body.camera-on .subtitle, body.camera-on #panel1 .info-box { display: none; }
+        body.camera-on #recognizedSign { font-size: 1.8em; }
+        body.camera-on .recognition-overlay { padding: 16px; }
         body.camera-on .container { max-width: 1600px; }
         body.camera-on .main-grid { grid-template-columns: 1.7fr 1fr; }
         body.camera-on .video-wrapper { padding-bottom: 72%; }
-        body.camera-on #recognizedSign { font-size: 1.8em; }
-        body.camera-on .recognition-overlay { padding: 16px; }
-        body.camera-on .subtitle, body.camera-on #panel1 .info-box { display: none; }
+
+        /* Con la cámara activa, MediaPipe ocupa el hilo principal en cada cuadro: una transición
+           de max-height (recalcula layout en cada frame) queda "colgada" y tarda segundos en
+           verse si se colapsa el panel de datos. La quitamos para que sea instantáneo. */
+        body.camera-on #dataSection {
+            transition: none;
+        }
+
+        /* Modo cámara en PANTALLA COMPLETA: solo en pantallas angostas (celular). En escritorio
+           se usa la "vista ampliada" de arriba, dentro del layout normal, como antes. */
+        @media (max-width: 768px) {
+            body.camera-on { padding: 0; overflow: hidden; }
+            body.camera-on .titulo-flex,
+            body.camera-on .subtitle { display: none; }
+
+            body.camera-on .mode-selector {
+                position: fixed;
+                top: max(12px, env(safe-area-inset-top));
+                left: 0; right: 0;
+                z-index: 60;
+                margin: 0;
+                pointer-events: none;
+            }
+            body.camera-on .mode-selector .mode-btn {
+                pointer-events: auto;
+                background: rgba(0,0,0,0.55);
+                padding: 10px 16px;
+                font-size: 0.9em;
+            }
+            body.camera-on .mode-selector .mode-btn.active { background: #0856d4; }
+
+            body.camera-on .main-grid { display: block; gap: 0; }
+
+            body.camera-on #panel1 {
+                position: fixed;
+                inset: 0;
+                z-index: 40;
+                margin: 0;
+                padding: 0;
+                border-radius: 0;
+                background: #000;
+                box-shadow: none;
+            }
+            body.camera-on #panel1 .video-container {
+                position: absolute;
+                inset: 0;
+                margin: 0;
+                border-radius: 0;
+            }
+            body.camera-on #panel1 .video-wrapper {
+                position: absolute;
+                inset: 0;
+                padding-bottom: 0;
+                width: 100%;
+                height: 100%;
+            }
+
+            body.camera-on #panel1 .camera-controls {
+                position: absolute;
+                top: calc(max(12px, env(safe-area-inset-top)) + 56px);
+                right: 12px;
+                left: auto;
+                width: auto;
+                flex-direction: column;
+                gap: 10px;
+                z-index: 45;
+            }
+            body.camera-on #panel1 .camera-controls .btn {
+                flex: none;
+                width: auto;
+                margin: 0;
+                padding: 10px 16px;
+                font-size: 0.85em;
+                border-radius: 24px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                white-space: nowrap;
+            }
+
+            body.camera-on .recognition-overlay { bottom: calc(var(--sheet-h, 190px) + 12px); }
+
+            /* Panel de entrenar/reconocer y datos: bandeja inferior flotando sobre la cámara */
+            body.camera-on #panel2 {
+                position: fixed;
+                left: 0; right: 0; bottom: 0;
+                z-index: 50;
+                max-height: 46vh;
+                overflow-y: auto;
+                margin: 0;
+                padding: 14px 16px;
+                border-radius: 18px 18px 0 0;
+                /* Sin backdrop-filter aquí: desenfocar el video en vivo detrás del panel en cada
+                   cuadro es costoso y competía con el procesamiento de MediaPipe; usamos un fondo
+                   bien opaco en su lugar, que se ve igual de bien sin ese costo. */
+                background: rgba(10, 17, 32, 0.98);
+                box-shadow: 0 -10px 30px rgba(0,0,0,0.45);
+                padding-bottom: max(16px, env(safe-area-inset-bottom));
+            }
+            body.camera-on #panel2 .train-inline h2.tit2 { font-size: 15px; }
+            body.camera-on #panel2 #recordBtn,
+            body.camera-on #panel2 .data-toggle { margin-bottom: 8px; }
+        }
 
         /* Responsive Mobile Layout (< 768px) */
         @media (max-width: 768px) {
@@ -98,18 +292,26 @@
             .main-grid { grid-template-columns: 1fr; gap: 15px; }
             .video-wrapper { padding-bottom: 130%; }
             .info-box { display: none !important; }
-            
+
             .train-inline { display: flex; flex-direction: row; align-items: center; gap: 10px; }
             .train-inline h2.tit2 { font-size: 16px !important; white-space: nowrap; margin: 0; }
             .train-inline input#signName { flex: 1; margin: 0; }
-            
+
             .status-badge, .recording-indicator, .recognition-overlay { transform: scale(0.9); }
-            body.camera-on .video-wrapper { padding-bottom: 135%; }
             body.camera-on #recognizedSign { font-size: 1.5em; }
+            body.camera-on #panel2 { max-height: 50vh; }
         }
     </style>
 </head>
 <body>
+    <div id="appLoadingScreen" class="app-loading-screen">
+        <img src="logopoli2.jpeg" alt="Logo" class="app-loading-logo">
+        <h2>Preparando el traductor…</h2>
+        <div class="app-loading-bar"><div class="app-loading-bar-fill"></div></div>
+        <p id="appLoadingText">Cargando modelo de reconocimiento de señas…</p>
+        <button type="button" id="appLoadingSkip" class="app-loading-skip" style="display:none;">Continuar sin esperar</button>
+    </div>
+
     <div class="container">
         <div class="titulo-flex">
             <h1>🤟 Traductor de Lenguaje de Señas</h1>
@@ -130,10 +332,13 @@
                             <h2>📹</h2>
                             <p>Presiona "Iniciar Cámara" para comenzar</p>
                         </div>
-                        <video id="video" autoplay playsinline style="display:none"></video>
+                        <video id="video" autoplay playsinline muted style="display:none"></video>
                         <canvas id="canvas"></canvas>
                         <canvas id="trailCanvas" style="pointer-events:none;"></canvas>
 
+                        <div class="recording-indicator" id="modelLoadingBadge" style="background: rgba(8,86,212,0.9);">
+                            <div class="rec-dot"></div><span>Cargando modelo de señas…</span>
+                        </div>
                         <div class="recording-indicator" id="recordingIndicator">
                             <div class="rec-dot"></div><span id="recordingText">Grabando...</span>
                         </div>
@@ -148,29 +353,33 @@
                     </div>
                 </div>
 
-                <button class="btn btn-primary" id="cameraBtn" onclick="toggleCamera()">📷 Iniciar Cámara</button>
+                <div class="camera-controls">
+                    <button class="btn btn-primary" id="cameraBtn" onclick="toggleCamera()">📷 Iniciar Cámara</button>
+                    <button class="btn btn-secondary" id="switchCameraBtn" onclick="switchCamera()" style="display:none;">🔄 Frontal/Trasera</button>
+                </div>
 
                 <div class="info-box">
                     <strong>✨ Características:</strong><br>
                     • Detecta hasta 2 manos simultáneamente<br>
+                    • Cámara frontal o trasera, intercambiables en vivo<br>
                     • Modelo DTW (Dynamic Time Warping) integrado<br>
                     • Auto-reinicio inmediato al fallar lectura o retirar manos<br>
                     • Filtro de coincidencia estricto (>90% de precisión)
                 </div>
             </div>
 
-            <div class="panel">
+            <div class="panel" id="panel2">
                 <div id="trainPanel">
                     <div class="train-inline">
                         <h2 class="tit2">Entrenar Nueva Seña</h2>
-                        <input type="text" id="signName" placeholder="Nombre de la seña (ej: Hola, Gracias)"> 
+                        <input type="text" id="signName" placeholder="Nombre de la seña (ej: Hola, Gracias)">
                     </div>
                     <button class="btn btn-success" id="recordBtn" onclick="recordSign()" disabled>⏺️ Grabar Seña (3 segundos)</button>
                 </div>
 
                 <div id="recognizePanel" style="display:none;">
                     <h2>Reconocimiento Activo</h2>
-                    <div class="info-box"> 
+                    <div class="info-box">
                         <strong>👀 El sistema está analizando:</strong><br>
                         • Posición y trayectorias relativas a la muñeca<br>
                         • Auto-reinicio automático ante gestos desconocidos
@@ -179,25 +388,31 @@
 
                 <hr style="border: 0; height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0;">
 
-                <h2>Datos de Entrenamiento</h2>
-                <div id="sbStatus" class="sb-status sb-local">⏳ Conectando...</div>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px; margin-top: 5px;">
-                    <button class="btn btn-primary" style="margin:0;" onclick="exportSigns()">📤 Exportar DB (.JSON)</button>
-                    <button class="btn btn-primary" style="margin:0; position: relative; overflow: hidden;">
-                        📥 Importar a DB (.JSON)
-                        <input type="file" id="importFile" accept="application/json,.json" onchange="importSigns(this.files[0]); this.value='';" style="position: absolute; left: 0; top: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer;">
-                    </button>
-                </div>
-                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    <button class="btn btn-success" style="margin:0;" onclick="reloadFromCloud()">🔄 Recargar desde nube</button>
-                </div>
+                <button type="button" class="data-toggle" id="dataToggle" onclick="toggleDataSection()">
+                    <span>📊 Datos de Entrenamiento (<span id="signCount">0</span>)</span>
+                    <span id="dataToggleIcon">▾</span>
+                </button>
 
-                <div class="signs-list">
-                    <h3 style="display:flex; justify-content:space-between; align-items:center;">
-                        Señas Guardadas (<span id="signCount">0</span>) 
-                        <button class="delete-btn" id="clearAllBtn" style="display:none;" onclick="clearAllSigns()">🗑️ Borrar Todo</button>
-                    </h3>
-                    <div id="signsList" class="empty-state">Sin señas entrenadas. ¡Comienza grabando una!</div>
+                <div id="dataSection">
+                    <div id="sbStatus" class="sb-status sb-local">⏳ Conectando...</div>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px; margin-top: 5px;">
+                        <button class="btn btn-primary" style="margin:0;" onclick="exportSigns()">📤 Exportar DB (.JSON)</button>
+                        <button class="btn btn-primary" style="margin:0; position: relative; overflow: hidden;">
+                            📥 Importar a DB (.JSON)
+                            <input type="file" id="importFile" accept="application/json,.json" onchange="importSigns(this.files[0]); this.value='';" style="position: absolute; left: 0; top: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer;">
+                        </button>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button class="btn btn-success" style="margin:0;" onclick="reloadFromCloud()">🔄 Recargar desde nube</button>
+                    </div>
+
+                    <div class="signs-list">
+                        <h3 style="display:flex; justify-content:space-between; align-items:center;">
+                            Señas Guardadas
+                            <button class="delete-btn" id="clearAllBtn" style="display:none;" onclick="clearAllSigns()">🗑️ Borrar Todo</button>
+                        </h3>
+                        <div id="signsList" class="empty-state">Sin señas entrenadas. ¡Comienza grabando una!</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -219,19 +434,23 @@
         ];
 
         let hands = null;
-        let cameraInstance = null;
+        let handsReady = false;
+        let frameLoopId = null;
         let cameraStream = null;
         let trainedSigns = {};
         let currentMode = 'train';
         let isRecording = false;
         let recordingData = [];
         let motionHistory = [];
-        
+
+        // 'user' = cámara frontal, 'environment' = cámara trasera
+        let currentFacingMode = 'user';
+
         let liveBuffer = [];
-        const LIVE_BUFFER_MAX = 30; 
+        const LIVE_BUFFER_MAX = 30;
         const THRESHOLD_DTW = 0.93; // Umbral estricto del 90%
 
-        // --- Configuración Supabase ---
+        // --- Configuración de la base de datos ---
         // Proyecto: cpdcczkgwquseffhpirw (us-east-1)
         const SUPABASE_URL_DEFAULT = "https://cpdcczkgwquseffhpirw.supabase.co";
         const SUPABASE_ANON_KEY_DEFAULT = "sb_publishable_R-AEkZ1hewFHI2b-ReEC_g_6ZgHNc_x";
@@ -254,7 +473,7 @@
                 sb = window.supabase.createClient(cfg.url, cfg.key);
                 testSupabaseConnection();
             } catch (e) {
-                console.error('Error init Supabase:', e);
+                console.error('Error al inicializar la db:', e);
                 setSbStatus(false, '❌ Error al inicializar db, usando modo local');
             }
         }
@@ -263,10 +482,10 @@
             try {
                 const { error } = await sb.from(SUPABASE_TABLE).select('id', { count: 'exact', head: true });
                 if (error) throw error;
-                setSbStatus(true, '☁️ conectado: datos en la nube');
+                setSbStatus(true, '☁️ conectado: datos en la db');
             } catch (e) {
-                console.error('Supabase no disponible:', e.message);
-                setSbStatus(false, '⚠️ Sin conexión a Supabase (' + e.message + ') — modo local');
+                console.error('db no disponible:', e.message);
+                setSbStatus(false, '⚠️ Sin conexión a la db (' + e.message + ') — modo local');
                 sbConnected = false;
             }
         }
@@ -278,9 +497,9 @@
             el.className = 'sb-status ' + (ok ? 'sb-ok' : 'sb-local');
         }
 
-        // --- Manejo de Datos (Supabase + fallback LocalStorage) ---
+        // --- Manejo de Datos (db + fallback LocalStorage) ---
         async function loadSigns() {
-            // 1) Intentar desde Supabase
+            // 1) Intentar desde la db
             if (sb) {
                 try {
                     const { data, error } = await sb.from(SUPABASE_TABLE).select('*').order('name');
@@ -295,7 +514,7 @@
                         };
                     });
                     sbConnected = true;
-                    setSbStatus(true, `☁️ conectado: ${data.length} seña(s) en la nube`);
+                    setSbStatus(true, `☁️ conectado: ${data.length} seña(s) en la db`);
                     // cache local
                     try { localStorage.setItem('trainedSigns', JSON.stringify(trainedSigns)); } catch(e){}
                     updateSignsList();
@@ -323,7 +542,7 @@
             } catch(e){ console.error("Error al guardar en localStorage:", e); }
         }
 
-        // Guarda/actualiza UNA seña en Supabase (upsert por name). Siempre actualiza caché local.
+        // Guarda/actualiza UNA seña en la db (upsert por name). Siempre actualiza caché local.
         async function persistSign(name) {
             saveLocalCache();
             updateSignsList();
@@ -334,7 +553,7 @@
                 const payload = { name, vectors: entry.vectors, frames: entry.frames || 0, updated_at: new Date().toISOString() };
                 const { error } = await sb.from(SUPABASE_TABLE).upsert(payload, { onConflict: 'name' });
                 if (error) throw error;
-                if (!sbConnected) { sbConnected = true; setSbStatus(true, '☁️ conectado: datos en la nube'); }
+                if (!sbConnected) { sbConnected = true; setSbStatus(true, '☁️ conectado: datos en la db'); }
             } catch (e) {
                 console.error('persistSign falló:', e.message);
                 sbConnected = false;
@@ -364,14 +583,45 @@
             if (mode === 'train') document.getElementById('recognitionOverlay').style.display = 'none';
         }
 
+        // Sección colapsable "Datos de Entrenamiento": se oculta al iniciar la cámara para
+        // dejar más espacio libre a la vista de la cámara; el usuario puede desplegarla cuando la necesite.
+        // El modo cámara en pantalla completa (con bandeja inferior y botones flotantes) es solo
+        // para pantallas angostas; en escritorio la cámara se agranda dentro del layout normal.
+        function isMobileViewport() {
+            return window.matchMedia('(max-width: 768px)').matches;
+        }
+
+        function setDataSectionCollapsed(collapsed) {
+            document.getElementById('dataSection').classList.toggle('collapsed', collapsed);
+            document.getElementById('dataToggleIcon').textContent = collapsed ? '▸' : '▾';
+            updateSheetHeightVar();
+            setTimeout(updateSheetHeightVar, 280); // tras la transición CSS
+        }
+        function toggleDataSection() {
+            const isCollapsed = document.getElementById('dataSection').classList.contains('collapsed');
+            setDataSectionCollapsed(!isCollapsed);
+        }
+
+        // Mide la altura real de la bandeja inferior (panel2) para que el aviso de reconocimiento
+        // (recognitionOverlay) siempre flote justo encima de ella, sin quedar tapado.
+        function updateSheetHeightVar() {
+            const panel2 = document.getElementById('panel2');
+            if (!panel2 || !document.body.classList.contains('camera-on')) return;
+            const h = panel2.getBoundingClientRect().height;
+            if (h > 0) document.documentElement.style.setProperty('--sheet-h', h + 'px');
+        }
+        window.addEventListener('resize', updateSheetHeightVar);
+
         // --- MediaPipe Hands ---
         function initializeMediaPipe() {
             if (hands) return;
             hands = new Hands({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
             });
             hands.setOptions({
                 maxNumHands: 2,
+                // Modelo "full": mayor precisión, necesaria para que el reconocimiento coincida
+                // bien con las señas ya entrenadas.
                 modelComplexity: 1,
                 minDetectionConfidence: 0.60,
                 minTrackingConfidence: 0.55
@@ -381,6 +631,11 @@
 
         // --- Procesamiento de Video ---
         function onResults(results) {
+            if (!handsReady) {
+                handsReady = true;
+                const badge = document.getElementById('modelLoadingBadge');
+                if (badge) badge.style.display = 'none';
+            }
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
             if (results.image) {
@@ -492,11 +747,11 @@
                 return;
             }
 
-            const frame = { 
-                landmarks: results.multiHandLandmarks, 
-                handedness: results.multiHandedness || [] 
+            const frame = {
+                landmarks: results.multiHandLandmarks,
+                handedness: results.multiHandedness || []
             };
-            
+
             liveBuffer.push(frameToVector(frame));
             if (liveBuffer.length > LIVE_BUFFER_MAX) liveBuffer.shift();
 
@@ -529,7 +784,7 @@
                 // Si hay manos en pantalla pero el gesto NO es reconocido con confianza >= 90%,
                 // ocultamos el overlay y REINICIAMOS la lectura (limpiamos el buffer).
                 document.getElementById('recognitionOverlay').style.display = 'none';
-                liveBuffer = []; 
+                liveBuffer = [];
             }
         }
 
@@ -539,30 +794,56 @@
             if (!name) { alert('⚠️ Ingresa un nombre para la seña'); return; }
             if (!video.srcObject) { alert('📷 Inicia la cámara primero'); return; }
 
-            isRecording = true; 
-            recordingData = []; 
-            recordBtn.disabled = true; 
-            document.getElementById('recordingIndicator').style.display = 'flex';
+            // El modelo "full" procesa cada cuadro más lento que el "lite", así que en equipos
+            // menos potentes 3 segundos fijos a veces no alcanzan a juntar frames suficientes.
+            // En vez de fallar apenas se cumple el tiempo, esperamos hasta MIN_FRAMES (o hasta un
+            // tope máximo) antes de dar por terminada la grabación.
+            const MIN_FRAMES = 7;
+            const MIN_DURATION_MS = 3000;
+            const MAX_DURATION_MS = 8000;
+            const POLL_MS = 150;
 
-            setTimeout(async () => {
-                isRecording = false; 
-                document.getElementById('recordingIndicator').style.display = 'none'; 
+            isRecording = true;
+            recordingData = [];
+            recordBtn.disabled = true;
+            const recIndicator = document.getElementById('recordingIndicator');
+            const recText = document.getElementById('recordingText');
+            recIndicator.style.display = 'flex';
+            if (recText) recText.textContent = 'Grabando...';
+
+            const startTime = Date.now();
+
+            const finishRecording = async () => {
+                isRecording = false;
+                recIndicator.style.display = 'none';
                 recordBtn.disabled = false;
 
                 if (recordingData.length > 6) {
                     const vectors = recordingData.map(f => frameToVector({landmarks: f.landmarks, handedness: f.handedness}));
-                    
+
                     trainedSigns[name] = trainedSigns[name] || { vectors: [], timestamp: Date.now(), frames: 0 };
                     trainedSigns[name].vectors.push(vectors);
                     trainedSigns[name].timestamp = Date.now();
                     trainedSigns[name].frames = (trainedSigns[name].frames || 0) + recordingData.length;
-                    
+
                     await persistSign(name);
-                    alert(`✅ Seña "${name}" guardada en ${sb ? 'Supabase ☁️' : 'local'} (${recordingData.length} frames)`);
+                    alert(`✅ Seña "${name}" guardada en ${sb ? 'db ☁️' : 'local'} (${recordingData.length} frames)`);
                 } else {
-                    alert('❌ No se capturaron suficientes frames. Intenta de nuevo.');
+                    alert('❌ No se capturaron suficientes frames. Verifica que tus manos estén visibles frente a la cámara, con buena luz, e intenta de nuevo.');
                 }
-            }, 3000);
+            };
+
+            const checkProgress = () => {
+                const elapsed = Date.now() - startTime;
+                const enoughFrames = recordingData.length > MIN_FRAMES;
+
+                if (elapsed >= MIN_DURATION_MS && enoughFrames) { finishRecording(); return; }
+                if (elapsed >= MAX_DURATION_MS) { finishRecording(); return; }
+
+                if (elapsed >= MIN_DURATION_MS && recText) recText.textContent = 'Grabando... (esperando más fotogramas)';
+                setTimeout(checkProgress, POLL_MS);
+            };
+            setTimeout(checkProgress, MIN_DURATION_MS);
         }
 
         // --- Herramientas de Renderizado de Movimiento ---
@@ -596,9 +877,9 @@
         function updateStatus(handsDetected) {
             const statusText = document.getElementById('statusText');
             const statusBadge = document.getElementById('statusBadge');
-            
+
             if (handsDetected === 0) {
-                statusBadge.style.display = 'none'; 
+                statusBadge.style.display = 'none';
             } else if (handsDetected === 1) {
                 statusBadge.style.display = 'block';
                 statusText.textContent = '✋ 1 Mano';
@@ -611,18 +892,92 @@
         }
 
         // --- Control de Cámara ---
+        function applyMirror() {
+            // Solo espejamos la vista cuando es cámara frontal (selfie), como en cualquier cámara nativa
+            const mirror = currentFacingMode === 'user';
+            video.classList.toggle('mirror', mirror);
+            canvas.classList.toggle('mirror', mirror);
+            trailCanvas.classList.toggle('mirror', mirror);
+        }
+
+        // Bucle propio de envío de frames a MediaPipe Hands. NO usamos la clase Camera de
+        // @mediapipe/camera_utils porque internamente hace su propia llamada a getUserMedia
+        // (siempre pidiendo cámara frontal, ignorando currentFacingMode). Tener dos sesiones de
+        // cámara abiertas a la vez (la nuestra + la suya) provoca "NotReadableError: Could not
+        // start video source" al cambiar de cámara, porque el hardware queda ocupado.
+        function stopFrameLoop() {
+            if (frameLoopId !== null) { cancelAnimationFrame(frameLoopId); frameLoopId = null; }
+        }
+        function startFrameLoop() {
+            stopFrameLoop();
+            const loop = async () => {
+                if (!video.srcObject || video.readyState < 2) {
+                    frameLoopId = requestAnimationFrame(loop);
+                    return;
+                }
+                try { await hands.send({ image: video }); } catch (e) { console.error('hands.send error:', e); }
+                frameLoopId = requestAnimationFrame(loop);
+            };
+            frameLoopId = requestAnimationFrame(loop);
+        }
+
+        async function acquireStream(facingMode) {
+            const constraintsList = [
+                { video: { facingMode: { exact: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+                { video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+                { video: { facingMode: facingMode } },
+                { video: true }
+            ];
+            let lastErr = null;
+            for (const constraints of constraintsList) {
+                try {
+                    return await navigator.mediaDevices.getUserMedia(constraints);
+                } catch (e) { lastErr = e; }
+            }
+            throw lastErr || new Error('No se pudo acceder a la cámara');
+        }
+
+        async function startCameraStream() {
+            initializeMediaPipe();
+            document.getElementById('modelLoadingBadge').style.display = handsReady ? 'none' : 'flex';
+            cameraStream = await acquireStream(currentFacingMode);
+            video.srcObject = cameraStream;
+            await video.play();
+            applyMirror();
+
+            // Pantalla completa de cámara: colapsamos la sección de datos para no tapar la vista
+            document.body.classList.add('camera-on');
+            // Solo colapsamos la sección de datos en móvil (ahí la cámara es de pantalla completa
+            // y esa bandeja podría taparla); en escritorio queda visible como siempre.
+            if (isMobileViewport()) setDataSectionCollapsed(true);
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const wrap = document.querySelector('.video-wrapper');
+            const w = (wrap && wrap.clientWidth) || video.clientWidth || window.innerWidth || 1280;
+            const h = (wrap && wrap.clientHeight) || video.clientHeight || window.innerHeight || 720;
+            canvas.width = w; canvas.height = h; trailCanvas.width = w; trailCanvas.height = h;
+
+            video.style.display = 'block';
+            document.getElementById('placeholder').style.display = 'none';
+            recordBtn.disabled = false;
+            document.getElementById('cameraBtn').textContent = '⏹️ Detener Cámara';
+            document.getElementById('switchCameraBtn').style.display = 'block';
+
+            startFrameLoop();
+        }
+
         async function toggleCamera() {
             const btn = document.getElementById('cameraBtn');
             const placeholder = document.getElementById('placeholder');
 
             if (video.srcObject) {
-                if (cameraInstance) { try { cameraInstance.stop(); } catch(e){} cameraInstance = null; }
+                stopFrameLoop();
                 if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
                 video.srcObject = null;
                 video.style.display = 'none';
                 placeholder.style.display = 'block';
                 recordBtn.disabled = true;
                 btn.textContent = '📷 Iniciar Cámara';
+                document.getElementById('switchCameraBtn').style.display = 'none';
                 document.getElementById('statusBadge').style.display = 'none';
                 document.body.classList.remove('camera-on');
                 location.reload();
@@ -630,30 +985,8 @@
             }
 
             try {
-                initializeMediaPipe();
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' } });
-                video.srcObject = cameraStream;
-                await video.play();
-
-                // Ampliar vista de cámara para ver mejor grabación y reconocimiento
-                document.body.classList.add('camera-on');
-                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-                const wrap = document.querySelector('.video-wrapper');
-                const w = (wrap && wrap.clientWidth) || video.clientWidth || 1280;
-                const h = Math.round(w * (window.innerWidth <= 768 ? 1.35 : 0.72));
-                canvas.width = w; canvas.height = h; trailCanvas.width = w; trailCanvas.height = h;
-                
-                video.style.display = 'block'; 
-                placeholder.style.display = 'none';
-                recordBtn.disabled = false;
-                btn.textContent = '⏹️ Detener Cámara';
                 document.getElementById('panel1').scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-                cameraInstance = new Camera(video, {
-                    onFrame: async () => { await hands.send({image: video}); },
-                    width: 1280, height: 720
-                });
-                cameraInstance.start();
+                await startCameraStream();
             } catch(err) {
                 document.body.classList.remove('camera-on');
                 placeholder.innerHTML = `<div style="background: rgba(255,0,0,0.25); padding:12px; border-radius:8px; color:#ffdddd;"><h3>⚠️ Error de cámara</h3><p>${err.message}</p></div>`;
@@ -661,7 +994,32 @@
             }
         }
 
-        // --- Importación / Exportación con Supabase ---
+        // Alterna entre cámara frontal ('user') y trasera ('environment') sin recargar la página
+        async function switchCamera() {
+            if (!video.srcObject) return;
+            const switchBtn = document.getElementById('switchCameraBtn');
+            switchBtn.disabled = true;
+
+            const previousFacingMode = currentFacingMode;
+            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+
+            stopFrameLoop();
+            if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
+
+            try {
+                await startCameraStream();
+            } catch (err) {
+                console.error('No se pudo cambiar de cámara:', err);
+                alert('⚠️ No se pudo cambiar de cámara: ' + err.message);
+                // Reintenta con la cámara anterior
+                currentFacingMode = previousFacingMode;
+                try { await startCameraStream(); } catch(e){}
+            } finally {
+                switchBtn.disabled = false;
+            }
+        }
+
+        // --- Importación / Exportación con la db ---
         function downloadJson(obj, filename) {
             const data = JSON.stringify(obj, null, 2);
             const blob = new Blob([data], {type: 'application/json'});
@@ -694,7 +1052,7 @@
                     trainedSigns = payload;
                     saveLocalCache();
                     updateSignsList();
-                    origen = 'Supabase ☁️';
+                    origen = 'db ☁️';
                 }
                 const n = Object.keys(payload || {}).length;
                 if (n === 0) { alert('⚠️ No hay señas para exportar.'); return; }
@@ -704,7 +1062,7 @@
                 alert(`✅ ${n} seña(s) exportadas desde ${origen}.`);
             } catch (err) {
                 console.error('export falló:', err);
-                alert('❌ Error al exportar desde Supabase: ' + err.message + '\nSe exporta caché local.');
+                alert('❌ Error al exportar desde la db: ' + err.message + '\nSe exporta caché local.');
                 downloadJson(trainedSigns, 'entrenamiento_lessa_local.json');
             }
         }
@@ -765,7 +1123,7 @@
             return null;
         }
 
-        // Importa un .JSON hacia la DB (upsert por name, en lotes)
+        // Importa un .JSON hacia la db (upsert por name, en lotes)
         async function importSigns(file) {
             if (!file) return;
             try {
@@ -791,7 +1149,7 @@
                 }
                 saveLocalCache();
                 updateSignsList();
-                // Subir solo las importadas a Supabase en lotes de 50
+                // Subir solo las importadas a la db en lotes de 50
                 if (sb) {
                     const rows = importadas.map((name) => ({
                         name,
@@ -806,10 +1164,10 @@
                         if (error) throw error;
                     }
                     sbConnected = true;
-                    setSbStatus(true, `☁️ conectado: ${rows.length} seña(s) en la nube`);
+                    setSbStatus(true, `☁️ conectado: ${rows.length} seña(s) en la db`);
                     await loadSigns(); // recargar para quedar en sync con la DB
                 }
-                alert(`✅ ${validas} seña(s) importadas a ${sb ? 'Supabase ☁️' : 'local'}.`);
+                alert(`✅ ${validas} seña(s) importadas a ${sb ? 'db ☁️' : 'local'}.`);
             } catch (err) {
                 console.error(err);
                 alert("❌ Error al importar: " + err.message);
@@ -817,9 +1175,9 @@
         }
 
         async function reloadFromCloud() {
-            if (!sb) { alert('⚠️ Configura Supabase primero.'); return; }
+            if (!sb) { alert('⚠️ No hay conexión a la db.'); return; }
             await loadSigns();
-            alert(`✅ Sincronizado: ${Object.keys(trainedSigns).length} seña(s) desde Supabase.`);
+            alert(`✅ Sincronizado: ${Object.keys(trainedSigns).length} seña(s) desde la db.`);
         }
 
         function updateSignsList(){
@@ -828,13 +1186,14 @@
             const keys = Object.keys(trainedSigns || {});
             document.getElementById('signCount').textContent = keys.length;
             document.getElementById('clearAllBtn').style.display = keys.length > 0 ? 'inline-block' : 'none';
-            
-            if (keys.length === 0) { 
-                container.className = 'empty-state'; 
-                container.textContent = 'Sin señas entrenadas. ¡Comienza grabando una!'; 
-                return; 
+
+            if (keys.length === 0) {
+                container.className = 'empty-state';
+                container.textContent = 'Sin señas entrenadas. ¡Comienza grabando una!';
+                updateSheetHeightVar();
+                return;
             }
-            
+
             keys.forEach(name => {
                 const entry = trainedSigns[name];
                 const div = document.createElement('div'); div.className = 'sign-item';
@@ -844,19 +1203,20 @@
                         <div style="font-size:0.85em;color:rgba(255,255,255,0.8)">${entry.frames || 0} frames • ${new Date(entry.timestamp).toLocaleString()}</div>
                     </div>
                 `;
-                const del = document.createElement('button'); del.className='delete-btn'; del.textContent='Eliminar'; 
+                const del = document.createElement('button'); del.className='delete-btn'; del.textContent='Eliminar';
                 del.onclick = async ()=>{ if (confirm(`¿Borrar seña "${name}"?`)){ delete trainedSigns[name]; await deleteSignRemote(name); } };
                 const exp = document.createElement('button'); exp.className='delete-btn'; exp.style.background='rgba(33,150,243,0.7)'; exp.style.marginRight='6px'; exp.textContent='📤';
                 exp.title = `Exportar "${name}" a .JSON`;
                 exp.onclick = ()=> exportSingleSign(name);
                 const wrap = document.createElement('div');
                 wrap.appendChild(exp); wrap.appendChild(del);
-                div.appendChild(wrap); 
+                div.appendChild(wrap);
                 container.appendChild(div);
             });
+            updateSheetHeightVar();
         }
 
-        async function clearAllSigns(){ 
+        async function clearAllSigns(){
             if (!confirm('¿Borrar todas las señas entrenadas?')) return;
             trainedSigns = {};
             saveLocalCache();
@@ -877,6 +1237,81 @@
         initSupabase();
         loadSigns();
         setMode('train');
+        // --- Pantalla de carga inicial ---
+        // Mantiene tapada la app con una barra de progreso hasta que el modelo de MediaPipe Hands
+        // (WASM + red neuronal) termine de inicializarse, así la cámara ya reconoce señas desde
+        // el primer intento en vez de fallar mientras se descarga en segundo plano.
+        function hideAppLoadingScreen() {
+            const el = document.getElementById('appLoadingScreen');
+            if (!el || el.classList.contains('hidden')) return;
+            el.classList.add('hidden');
+            setTimeout(() => { el.style.display = 'none'; }, 450);
+        }
+
+        let handsLoadAttempt = 0;
+
+        // Evita quedar colgado para siempre si una promesa nunca resuelve ni falla (p.ej. una
+        // conexión que se cae a mitad de una descarga sin disparar un error de red).
+        function withTimeout(promise, ms, message) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error(message || 'Tiempo de espera agotado')), ms))
+            ]);
+        }
+
+        // Prepara un frame de prueba (un canvas negro) en blanco solo para "ejercitar" el
+        // pipeline completo de MediaPipe una vez antes de dar por lista la app. `hands.initialize()`
+        // puede resolver aunque algún archivo se haya descargado corrupto/incompleto (p.ej. por una
+        // red inestable); enviar y esperar un frame real confirma que el modelo de verdad funciona
+        // de punta a punta, no solo que la promesa de carga se resolvió.
+        function warmupHandsWithBlankFrame() {
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = 64;
+            testCanvas.height = 64;
+            testCanvas.getContext('2d').fillRect(0, 0, 64, 64);
+            return hands.send({ image: testCanvas });
+        }
+
+        async function preloadHandsModel() {
+            const txt = document.getElementById('appLoadingText');
+            const skip = document.getElementById('appLoadingSkip');
+
+            // Si tarda demasiado (internet lento), ofrecemos seguir sin esperar el modelo.
+            const slowTimer = setTimeout(() => {
+                if (handsReady) return;
+                if (txt) txt.textContent = 'Esto está tardando más de lo normal. Verifica tu conexión a internet.';
+                if (skip) {
+                    skip.textContent = 'Continuar sin esperar';
+                    skip.onclick = hideAppLoadingScreen;
+                    skip.style.display = 'inline-block';
+                }
+            }, 7000);
+
+            try {
+                hands = null; // descarta cualquier instancia previa fallida antes de reintentar
+                initializeMediaPipe();
+                await withTimeout(hands.initialize(), 20000, 'Tiempo de espera agotado al inicializar el modelo');
+                await withTimeout(warmupHandsWithBlankFrame(), 8000, 'Tiempo de espera agotado al probar el modelo');
+                handsReady = true;
+                clearTimeout(slowTimer);
+                hideAppLoadingScreen();
+            } catch (e) {
+                clearTimeout(slowTimer);
+                handsLoadAttempt++;
+                console.error(`Error al cargar el modelo de señas (intento ${handsLoadAttempt}):`, e);
+                hands = null;
+                if (handsLoadAttempt < 3) {
+                    if (txt) txt.textContent = 'Reintentando cargar el modelo…';
+                    setTimeout(preloadHandsModel, 1200);
+                } else if (txt && skip) {
+                    txt.textContent = '⚠️ No se pudo cargar el modelo. Revisa tu conexión a internet.';
+                    skip.textContent = 'Reintentar';
+                    skip.onclick = () => { handsLoadAttempt = 0; preloadHandsModel(); };
+                    skip.style.display = 'inline-block';
+                }
+            }
+        }
+        preloadHandsModel();
     </script>
 </body>
 </html>
